@@ -1,21 +1,19 @@
-# ui/time_entry_window.py
-
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QComboBox, QPushButton, QMessageBox, QFrame
+    QComboBox, QPushButton, QMessageBox, QFrame, QDateEdit
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QDate
 from typing import List, Dict, Any
 import datetime
 
 class TimeEntryWindow(QWidget):
     """
     Окно для внесения до 8 разных интервалов времени.
-    Теперь принимает:
+    Принимает:
       - internal_taskid (int)  — реальный ID таска для POST /time/
       - projectid     (int)
-      - title         (str)    — заголовок / название таска
-      - localid       (int)    — публичный номер (для показа в шапке)
+      - title         (str)    — заголовок задачи
+      - localid       (int)    — публичный номер (для показа)
     """
 
     MAX_ROWS = 8
@@ -28,18 +26,24 @@ class TimeEntryWindow(QWidget):
         self.title = title
         self.localid = localid
 
-        # Показать в заголовке окна localid (а не internal id)
         self.setWindowTitle(f"Запись времени для задачи {self.localid}")
         self.resize(800, 600)
 
         layout = QVBoxLayout()
         self.setLayout(layout)
 
-        # --- Шапка: “localid : title” ---
+        # --- Шапка: localid : title + выбор даты ---
         header = QHBoxLayout()
         lbl_task = QLabel(f"{self.localid} : {self.title}")
         lbl_task.setStyleSheet("font-weight: bold; font-size: 16px;")
         header.addWidget(lbl_task, stretch=1)
+
+        # Добавляем QDateEdit
+        self.date_edit = QDateEdit()
+        self.date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.date_edit.setDate(QDate.currentDate())
+        self.date_edit.setCalendarPopup(True)
+        header.addWidget(self.date_edit, stretch=0)
 
         link_url = f"https://unifun.intervalsonline.com/tasks/view/{self.localid}/notes"
         lbl_link = QLabel(f'<a href="{link_url}">Открыть в браузере</a>')
@@ -54,7 +58,7 @@ class TimeEntryWindow(QWidget):
         line.setFrameShadow(QFrame.Sunken)
         layout.addWidget(line)
 
-        # --- Получаем список WorkType (как раньше) ---
+        # --- Получаем список WorkType ---
         try:
             self.worktypes: List[Dict[str, Any]] = self.api.get_worktypes_for_project(self.projectid)
         except Exception as e:
@@ -70,13 +74,11 @@ class TimeEntryWindow(QWidget):
         for i in range(self.MAX_ROWS):
             row_layout = QHBoxLayout()
 
-            # 1) Поле описания
             desc = QLineEdit()
             desc.setPlaceholderText(f"Описание (строка {i+1})")
             desc.setMinimumWidth(300)
             row_layout.addWidget(desc, stretch=3)
 
-            # 2) Выпадающий список WorkType
             combo = QComboBox()
             combo.setMinimumWidth(200)
             combo.addItem("--- Тип работы ---", userData=None)
@@ -95,7 +97,6 @@ class TimeEntryWindow(QWidget):
 
         layout.addStretch()
 
-        # --- Кнопка “Submit” ---
         btn_submit = QPushButton("Submit")
         btn_submit.clicked.connect(self.on_submit)
         btn_submit.setFixedHeight(40)
@@ -105,14 +106,13 @@ class TimeEntryWindow(QWidget):
         errors = []
         success_count = 0
 
-        date_str = datetime.date.today().isoformat()
+        date_str = self.date_edit.date().toString("yyyy-MM-dd")
 
         for idx, (desc_edit, combo) in enumerate(self.row_widgets, 1):
             desc_text = desc_edit.text().strip()
             worktypeid = combo.currentData()
 
-            # Пропускаем пустую строку
-            if not desc_text and (worktypeid is None or worktypeid == 0):
+            if not desc_text and (worktypeid is None or worktypeid == 0) and not hours_text:
                 continue
 
             if not desc_text:
@@ -121,9 +121,14 @@ class TimeEntryWindow(QWidget):
             if not worktypeid:
                 errors.append(f"Строка {idx}: не выбран тип работы.")
                 continue
+            try:
+                hours_val = float(hours_text)
+                if hours_val <= 0:
+                    raise ValueError
+            except ValueError:
+                errors.append(f"Строка {idx}: некорректное значение часов («{hours_text}»).")
+                continue
 
-
-            # Здесь важно: вместо localid мы передаём именно internal_taskid:
             try:
                 self.api.create_time_entry(
                     taskid=self.internal_taskid,
