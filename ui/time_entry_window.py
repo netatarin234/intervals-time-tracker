@@ -1,14 +1,22 @@
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QComboBox, QPushButton, QMessageBox, QFrame, QDateEdit
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QComboBox,
+    QPushButton,
+    QMessageBox,
+    QFrame,
+    QDateEdit,
+    QTextEdit,
 )
 from PyQt5.QtCore import Qt, QDate
 from typing import List, Dict, Any
-import datetime
 
 class TimeEntryWindow(QWidget):
     """
-    Окно для внесения до 8 разных интервалов времени.
+    Окно для внесения записей времени.
     Принимает:
       - internal_taskid (int)  — реальный ID таска для POST /time/
       - projectid     (int)
@@ -16,7 +24,6 @@ class TimeEntryWindow(QWidget):
       - localid       (int)    — публичный номер (для показа)
     """
 
-    MAX_ROWS = 8
 
     def __init__(self, api, internal_taskid: int, projectid: int, title: str, localid: int):
         super().__init__()
@@ -53,6 +60,18 @@ class TimeEntryWindow(QWidget):
         header.addWidget(lbl_link, stretch=0)
 
         layout.addLayout(header)
+        # --- Комментарий (скрывается/раскрывается по кнопке) ---
+        comment_toggle_layout = QHBoxLayout()
+        self.btn_comment = QPushButton("Показать комментарий")
+        self.btn_comment.setCheckable(True)
+        self.btn_comment.toggled.connect(self.on_toggle_comment)
+        comment_toggle_layout.addWidget(self.btn_comment)
+        layout.addLayout(comment_toggle_layout)
+
+        self.comment_edit = QTextEdit()
+        self.comment_edit.setPlaceholderText("Комментарий")
+        self.comment_edit.setVisible(False)
+        layout.addWidget(self.comment_edit)
         line = QFrame()
         line.setFrameShape(QFrame.HLine)
         line.setFrameShadow(QFrame.Sunken)
@@ -68,32 +87,11 @@ class TimeEntryWindow(QWidget):
         if not self.worktypes:
             QMessageBox.warning(self, "Внимание", "Список WorkType для этого проекта пуст.")
 
-        # --- Строки для ввода: описание, WorkType, часы ---
+        # --- Строки для ввода: динамически добавляемые ---
         self.row_widgets = []
-
-        for i in range(self.MAX_ROWS):
-            row_layout = QHBoxLayout()
-
-            desc = QLineEdit()
-            desc.setPlaceholderText(f"Описание (строка {i+1})")
-            desc.setMinimumWidth(300)
-            row_layout.addWidget(desc, stretch=3)
-
-            combo = QComboBox()
-            combo.setMinimumWidth(200)
-            combo.addItem("--- Тип работы ---", userData=None)
-            for wt in self.worktypes:
-                display_name = wt.get("worktype", "<без названия>")
-                try:
-                    wt_id = int(wt.get("worktypeid", "0"))
-                except (ValueError, TypeError):
-                    wt_id = 0
-                combo.addItem(display_name, userData=wt_id)
-            row_layout.addWidget(combo, stretch=2)
-
-
-            layout.addLayout(row_layout)
-            self.row_widgets.append((desc, combo))
+        self.rows_layout = QVBoxLayout()
+        layout.addLayout(self.rows_layout)
+        self.add_row()
 
         layout.addStretch()
 
@@ -102,9 +100,47 @@ class TimeEntryWindow(QWidget):
         btn_submit.setFixedHeight(40)
         layout.addWidget(btn_submit, alignment=Qt.AlignCenter)
 
+    def add_row(self):
+        idx = len(self.row_widgets) + 1
+        row_layout = QHBoxLayout()
+
+        desc = QLineEdit()
+        desc.setPlaceholderText(f"Описание (строка {idx})")
+        desc.setMinimumWidth(300)
+        desc.textChanged.connect(self.check_last_row_filled)
+        row_layout.addWidget(desc, stretch=3)
+
+        combo = QComboBox()
+        combo.setMinimumWidth(200)
+        combo.addItem("--- Тип работы ---", userData=None)
+        for wt in self.worktypes:
+            display_name = wt.get("worktype", "<без названия>")
+            try:
+                wt_id = int(wt.get("worktypeid", "0"))
+            except (ValueError, TypeError):
+                wt_id = 0
+            combo.addItem(display_name, userData=wt_id)
+        combo.currentIndexChanged.connect(self.check_last_row_filled)
+        row_layout.addWidget(combo, stretch=2)
+
+        self.rows_layout.addLayout(row_layout)
+        self.row_widgets.append((desc, combo))
+
+    def check_last_row_filled(self):
+        if not self.row_widgets:
+            return
+        desc, combo = self.row_widgets[-1]
+        if desc.text().strip() and combo.currentData():
+            self.add_row()
+
+    def on_toggle_comment(self, checked: bool):
+        self.comment_edit.setVisible(checked)
+        self.btn_comment.setText("Скрыть комментарий" if checked else "Показать комментарий")
+
     def on_submit(self):
         errors = []
         success_count = 0
+        comment_added = False
 
         date_str = self.date_edit.date().toString("yyyy-MM-dd")
 
@@ -112,7 +148,7 @@ class TimeEntryWindow(QWidget):
             desc_text = desc_edit.text().strip()
             worktypeid = combo.currentData()
 
-            if not desc_text and (worktypeid is None or worktypeid == 0) and not hours_text:
+            if not desc_text and (worktypeid is None or worktypeid == 0):
                 continue
 
             if not desc_text:
@@ -120,13 +156,6 @@ class TimeEntryWindow(QWidget):
                 continue
             if not worktypeid:
                 errors.append(f"Строка {idx}: не выбран тип работы.")
-                continue
-            try:
-                hours_val = float(hours_text)
-                if hours_val <= 0:
-                    raise ValueError
-            except ValueError:
-                errors.append(f"Строка {idx}: некорректное значение часов («{hours_text}»).")
                 continue
 
             try:
@@ -142,7 +171,20 @@ class TimeEntryWindow(QWidget):
             except Exception as e:
                 errors.append(f"Строка {idx}: ошибка при создании записи: {e}")
 
+        comment_text = self.comment_edit.toPlainText().strip()
+        if comment_text:
+            try:
+                self.api.create_task_note(
+                    taskid=self.internal_taskid,
+                    note=comment_text,
+                )
+                comment_added = True
+            except Exception as e:
+                errors.append(f"Ошибка добавления комментария: {e}")
+
         msg = f"Успешно создано {success_count} entr{'y' if success_count == 1 else 'ies'}."
+        if comment_added:
+            msg += "\nКомментарий добавлен."
         if errors:
             msg += "\nОшибки:\n" + "\n".join(errors)
             QMessageBox.warning(self, "Результат загрузки", msg)
