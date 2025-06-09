@@ -35,7 +35,7 @@
 
    * Enter **localid** of the task
    * Click **Load Task** to fetch details
-   * Fill up to **8** rows: description, work type, hours
+   * Fill up to **8** rows: description and work type
    * Press **Submit** to post entries to Intervals API
 
 ## 🗂️ Project Layout

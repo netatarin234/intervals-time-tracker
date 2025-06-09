@@ -89,7 +89,6 @@ class TimeEntryWindow(QWidget):
                 combo.addItem(display_name, userData=wt_id)
             row_layout.addWidget(combo, stretch=2)
 
-
             layout.addLayout(row_layout)
             self.row_widgets.append((desc, combo))
 
@@ -121,7 +120,6 @@ class TimeEntryWindow(QWidget):
             if not worktypeid:
                 errors.append(f"Строка {idx}: не выбран тип работы.")
                 continue
-
 
             # Здесь важно: вместо localid мы передаём именно internal_taskid:
             try:
