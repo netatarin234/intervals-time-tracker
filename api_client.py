@@ -117,3 +117,15 @@ class IntervalsAPI:
         resp = requests.post(url, auth=self.auth, headers=self.headers, json=payload)
         resp.raise_for_status()
         return resp.json()
+
+    def create_task_note(self, taskid: int, note: str) -> Dict[str, Any]:
+        """POST /tasknote/ to add a comment to a task."""
+        url = f"{self.BASE_URL}/tasknote/"
+        payload = {
+            "taskid": taskid,
+            "note": note,
+            "public": "f",
+        }
+        resp = requests.post(url, auth=self.auth, headers=self.headers, json=payload)
+        resp.raise_for_status()
+        return resp.json()
