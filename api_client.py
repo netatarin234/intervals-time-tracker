@@ -125,6 +125,7 @@ class IntervalsAPI:
             "taskid": taskid,
             "note": note,
             "public": "f",
+
         }
         resp = requests.post(url, auth=self.auth, headers=self.headers, json=payload)
         resp.raise_for_status()
