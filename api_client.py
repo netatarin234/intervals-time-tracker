@@ -123,8 +123,9 @@ class IntervalsAPI:
         url = f"{self.BASE_URL}/tasknote/"
         payload = {
             "taskid": taskid,
-            "personid": self.personid,
             "note": note,
+            "public": "f",
+
         }
         resp = requests.post(url, auth=self.auth, headers=self.headers, json=payload)
         resp.raise_for_status()
