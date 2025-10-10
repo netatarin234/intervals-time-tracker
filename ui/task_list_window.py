@@ -24,7 +24,7 @@ class TaskListWindow(QWidget):
         self.setLayout(main_layout)
 
         lbl_info = QLabel(
-            "Введите localid (ID) задачи через запятую и нажмите \"Загрузить задачу\":"
+            "Введите localid (ID) задачи через запятую и/или пробел нажмите \"Загрузить задачу\":"
         )
         lbl_info.setAlignment(Qt.AlignCenter)
         main_layout.addWidget(lbl_info)
@@ -48,7 +48,7 @@ class TaskListWindow(QWidget):
             QMessageBox.warning(self, "Внимание", "Пожалуйста, введите ID задач через запятую.")
             return
 
-        id_parts = [t.strip() for t in text.split(',') if t.strip()]
+        id_parts = [t.strip() for t in text.split(',', ' ') if t.strip()]
         if not id_parts:
             QMessageBox.warning(self, "Внимание", "Список ID пуст.")
             return
